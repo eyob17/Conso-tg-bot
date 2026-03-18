@@ -1,0 +1,81 @@
+import logging
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+
+# Replace with your Bot Token and your Admin Group Chat ID
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+ADMIN_GROUP_ID = -1001234567890  # The group where support tickets are sent
+
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Greets the user and shows the main menu."""
+    welcome_text = (
+        "👋 Welcome to the **Conso.tg** Official Support Bot!\n\n"
+        "I can help you navigate our Telegram-native Web3 console. "
+        "Choose an option below or type your message to speak to human support."
+    )
+    
+    keyboard = [[InlineKeyboardButton("🪙 What are Conso Points (CP)?", callback_data="faq_points")],[InlineKeyboardButton("📊 How do CA Signals work?", callback_data="faq_ca_signals")],[InlineKeyboardButton("📱 Mini Apps Parallel Guide", callback_data="faq_miniapps")],
+        [InlineKeyboardButton("🎁 Using CoinBox", callback_data="faq_coinbox")],
+        [InlineKeyboardButton("🚨 Report a Bug / Open Ticket", callback_data="open_ticket")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="Markdown")
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles inline button clicks for FAQs."""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "faq_points":
+        text = "🪙 **Conso Points (CP)** are earned through browsing, interacting, and participating in the Conso app. They will serve as the basis for future Web3 perks and rewards!"
+    elif query.data == "faq_ca_signals":
+        text = "📊 **CA Signals** automatically detects and aggregates contract addresses mentioned in your group chats, giving you a clear, reviewable list of on-chain token signals."
+    elif query.data == "faq_miniapps":
+        text = "📱 **Mini Apps Parallel** allows you to run several Telegram Mini Apps at the same time! You can seamlessly switch between games, tools, and tasks without losing your place."
+    elif query.data == "faq_coinbox":
+        text = "🎁 **CoinBox** lets you send and claim red-packet style token rewards directly in group chats to heat up discussions."
+    elif query.data == "open_ticket":
+        text = "🚨 **Open a Support Ticket:**\nPlease type your issue below in a single message (include your device type and wallet address if applicable). Our team will get back to you shortly."
+        context.user_data['awaiting_ticket'] = True
+        await query.message.reply_text(text, parse_mode="Markdown")
+        return
+
+    # Add a back button
+    keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_home")]]
+    await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Forwards user messages to the admin group as a support ticket."""
+    if context.user_data.get('awaiting_ticket'):
+        user = update.message.from_user
+        ticket_text = (
+            f"🎫 **New Support Ticket**\n"
+            f"**From:** @{user.username} (ID: {user.id})\n"
+            f"**Message:** {update.message.text}"
+        )
+        # Send to Admin Group
+        await context.bot.send_message(chat_id=ADMIN_GROUP_ID, text=ticket_text, parse_mode="Markdown")
+        
+        # Confirm to User
+        await update.message.reply_text("✅ Your ticket has been sent to the Conso.tg support team. We will contact you soon! If you have further issues, you can also email ama@conso.tg.")
+        context.user_data['awaiting_ticket'] = False
+    else:
+        # If they type randomly, prompt the menu
+        await start(update, context)
+
+def main():
+    app = Application.builder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler, pattern="^(faq_|open_ticket)"))
+    app.add_handler(CallbackQueryHandler(start, pattern="^back_home$"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    print("Conso.tg Support Bot is running...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
